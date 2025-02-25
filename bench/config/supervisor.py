@@ -3,21 +3,21 @@ import getpass
 import logging
 import os
 
-# imports - module imports
-import bench
-from bench.app import use_rq
-from bench.utils import get_bench_name, which
-from bench.bench import Bench
-from bench.config.common_site_config import (
-	update_config,
-	get_gunicorn_workers,
-	get_default_max_requests,
-	compute_max_requests_jitter,
-)
-
 # imports - third party imports
 import click
 
+# imports - module imports
+import bench
+from bench.app import use_rq
+from bench.bench import Bench
+from bench.config.common_site_config import (
+	compute_max_requests_jitter,
+	get_config,
+	get_default_max_requests,
+	get_gunicorn_workers,
+	update_config,
+)
+from bench.utils import get_bench_name, which
 
 logger = logging.getLogger(bench.PROJECT_NAME)
 
@@ -48,7 +48,6 @@ def generate_supervisor_config(bench_path, user=None, yes=False, skip_redis=Fals
 			"redis_server": which("redis-server"),
 			"node": which("node") or which("nodejs"),
 			"redis_cache_config": os.path.join(bench_dir, "config", "redis_cache.conf"),
-			"redis_socketio_config": os.path.join(bench_dir, "config", "redis_socketio.conf"),
 			"redis_queue_config": os.path.join(bench_dir, "config", "redis_queue.conf"),
 			"webserver_port": config.get("webserver_port", 8000),
 			"gunicorn_workers": web_worker_count,
@@ -59,6 +58,8 @@ def generate_supervisor_config(bench_path, user=None, yes=False, skip_redis=Fals
 			"bench_cmd": which("bench"),
 			"skip_redis": skip_redis,
 			"workers": config.get("workers", {}),
+			"multi_queue_consumption": can_enable_multi_queue_consumption(bench_path),
+			"supervisor_startretries": 10,
 		}
 	)
 
@@ -74,6 +75,7 @@ def generate_supervisor_config(bench_path, user=None, yes=False, skip_redis=Fals
 
 	update_config({"restart_supervisor_on_update": True}, bench_path=bench_path)
 	update_config({"restart_systemd_on_update": False}, bench_path=bench_path)
+	sync_socketio_port(bench_path)
 
 
 def get_supervisord_conf():
@@ -89,6 +91,31 @@ def get_supervisord_conf():
 	for possibility in possibilities:
 		if os.path.exists(possibility):
 			return possibility
+
+
+def sync_socketio_port(bench_path):
+	# Backward compatbility: always keep redis_cache and redis_socketio port same
+	common_config = get_config(bench_path=bench_path)
+
+	socketio_port = common_config.get("redis_socketio")
+	cache_port = common_config.get("redis_cache")
+	if socketio_port and socketio_port != cache_port:
+		update_config({"redis_socketio": cache_port})
+
+
+def can_enable_multi_queue_consumption(bench_path: str) -> bool:
+	try:
+		from semantic_version import Version
+
+		from bench.utils.app import get_current_version
+
+		supported_version = Version(major=14, minor=18, patch=0)
+
+		frappe_version = Version(get_current_version("frappe", bench_path=bench_path))
+
+		return frappe_version > supported_version
+	except Exception:
+		return False
 
 
 def check_supervisord_config(user=None):

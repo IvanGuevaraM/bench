@@ -73,7 +73,9 @@ def setup_supervisor(user=None, yes=False, skip_redis=False, skip_supervisord=Fa
 		generate_supervisor_config,
 	)
 
-	which("supervisorctl", raise_err=True)
+	if which("supervisorctl") is None:
+		click.secho("Please install `supervisor` to proceed", fg="red")
+		sys.exit(1)
 
 	if not skip_supervisord and "Permission denied" in get_cmd_output(
 		"supervisorctl status"
@@ -358,7 +360,7 @@ def sync_domains(domain=None, site=None):
 @click.command("role", help="Install dependencies via ansible roles")
 @click.argument("role")
 @click.option("--admin_emails", default="")
-@click.option("--mysql_root_password")
+@click.option("--mysql_root_password", "--mariadb_root_password")
 @click.option("--container", is_flag=True, default=False)
 def setup_roles(role, **kwargs):
 	extra_vars = {"production": True}

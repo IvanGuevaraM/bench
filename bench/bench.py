@@ -10,7 +10,7 @@ from typing import List, MutableSequence, TYPE_CHECKING, Union
 
 # imports - module imports
 import bench
-from bench.exceptions import AppNotInstalledError, InvalidRemoteException
+from bench.exceptions import AppNotInstalledError, InvalidRemoteException, ValidationError
 from bench.config.common_site_config import setup_config
 from bench.utils import (
 	UNSET_ARG,
@@ -122,6 +122,8 @@ class Bench(Base, Validator):
 		self.apps.sync()
 
 	def uninstall(self, app, no_backup=False, force=False):
+		if app == "frappe":
+			raise ValidationError("You cannot uninstall the app `frappe`")
 		from bench.app import App
 
 		if not force:
@@ -131,6 +133,7 @@ class Bench(Base, Validator):
 		except InvalidRemoteException:
 			if not force:
 				raise
+
 		self.apps.sync()
 		# self.build() - removed because it seems unnecessary
 		self.reload(_raise=False)
@@ -280,7 +283,7 @@ class BenchApps(MutableSequence):
 			]
 			self.apps.remove("frappe")
 			self.apps.insert(0, "frappe")
-		except FileNotFoundError:
+		except (FileNotFoundError, ValueError):
 			self.apps = []
 
 	def __getitem__(self, key):
@@ -309,13 +312,13 @@ class BenchApps(MutableSequence):
 	def add(self, app: "App"):
 		app.get()
 		app.install()
-		super().append(app.repo)
+		super().append(app.app_name)
 		self.apps.sort()
 
 	def remove(self, app: "App", no_backup: bool = False):
 		app.uninstall()
 		app.remove(no_backup=no_backup)
-		super().remove(app.repo)
+		super().remove(app.app_name)
 
 	def append(self, app: "App"):
 		return self.add(app)
@@ -370,12 +373,12 @@ class BenchSetup(Base):
 			)
 
 	@step(title="Setting Up Bench Config", success="Bench Config Set Up")
-	def config(self, redis=True, procfile=True):
+	def config(self, redis=True, procfile=True, additional_config=None):
 		"""Setup config folder
 		- create pids folder
 		- generate sites/common_site_config.json
 		"""
-		setup_config(self.bench.name)
+		setup_config(self.bench.name, additional_config=additional_config)
 
 		if redis:
 			from bench.config.redis import generate_config

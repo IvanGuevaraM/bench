@@ -39,6 +39,12 @@ import click
 @click.option("--skip-assets", is_flag=True, default=False, help="Do not build assets")
 @click.option("--install-app", help="Install particular app after initialization")
 @click.option("--verbose", is_flag=True, help="Verbose output during install")
+@click.option(
+	"--dev",
+	is_flag=True,
+	default=False,
+	help="Enable developer mode and install development dependencies.",
+)
 def init(
 	path,
 	apps_path,
@@ -54,6 +60,7 @@ def init(
 	skip_assets=False,
 	python="python3",
 	install_app=None,
+	dev=False,
 ):
 	import os
 
@@ -79,6 +86,7 @@ def init(
 			skip_assets=skip_assets,
 			python=python,
 			verbose=verbose,
+			dev=dev,
 		)
 		log(f"Bench {path} initialized", level=1)
 	except SystemExit:
@@ -143,6 +151,18 @@ def drop(path):
 	default=False,
 	help="Resolve dependencies before installing app",
 )
+@click.option(
+	"--cache-key",
+	type=str,
+	default=None,
+	help="Caches get-app artifacts if provided (only first 10 chars is used)",
+)
+@click.option(
+	"--compress-artifacts",
+	is_flag=True,
+	default=False,
+	help="Whether to gzip get-app artifacts that are to be cached",
+)
 def get_app(
 	git_url,
 	branch,
@@ -152,6 +172,8 @@ def get_app(
 	soft_link=False,
 	init_bench=False,
 	resolve_deps=False,
+	cache_key=None,
+	compress_artifacts=False,
 ):
 	"clone an app from the internet and set it up in your bench"
 	from bench.app import get_app
@@ -164,6 +186,8 @@ def get_app(
 		soft_link=soft_link,
 		init_bench=init_bench,
 		resolve_deps=resolve_deps,
+		cache_key=cache_key,
+		compress_artifacts=compress_artifacts,
 	)
 
 
@@ -229,3 +253,20 @@ def pip(ctx, args):
 
 	env_py = get_env_cmd("python")
 	os.execv(env_py, (env_py, "-m", "pip") + args)
+
+
+@click.command(
+	"validate-dependencies",
+	help="Validates that all requirements specified in frappe-dependencies are met curently.",
+)
+@click.pass_context
+def validate_dependencies(ctx):
+	"Validate all specified frappe-dependencies."
+	from bench.bench import Bench
+	from bench.app import App
+
+	bench = Bench(".")
+
+	for app_name in bench.apps:
+		app = App(app_name, bench=bench)
+		app.validate_app_dependencies(throw=True)

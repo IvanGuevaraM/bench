@@ -18,12 +18,14 @@ default_config = {
 DEFAULT_MAX_REQUESTS = 5000
 
 
-def setup_config(bench_path):
+def setup_config(bench_path, additional_config=None):
 	make_pid_folder(bench_path)
 	bench_config = get_config(bench_path)
 	bench_config.update(default_config)
 	bench_config.update(get_gunicorn_workers())
 	update_config_for_frappe(bench_config, bench_path)
+	if additional_config:
+		bench_config.update(additional_config)
 
 	put_config(bench_config, bench_path)
 
@@ -83,7 +85,7 @@ def update_config_for_frappe(config, bench_path):
 
 	for key in ("redis_cache", "redis_queue", "redis_socketio"):
 		if key not in config:
-			config[key] = f"redis://localhost:{ports[key]}"
+			config[key] = f"redis://127.0.0.1:{ports[key]}"
 
 	for key in ("webserver_port", "socketio_port", "file_watcher_port"):
 		if key not in config:
@@ -100,7 +102,7 @@ def make_ports(bench_path):
 		"socketio_port": 9000,
 		"file_watcher_port": 6787,
 		"redis_queue": 11000,
-		"redis_socketio": 12000,
+		"redis_socketio": 13000,
 		"redis_cache": 13000,
 	}
 
@@ -128,6 +130,10 @@ def make_ports(bench_path):
 			value = max(existing_value) + 1
 
 		ports[key] = value
+
+	# Backward compatbility: always keep redis_cache and redis_socketio port same
+	# Note: not required from v15
+	ports["redis_socketio"] = ports["redis_cache"]
 
 	return ports
 

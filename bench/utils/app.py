@@ -4,7 +4,7 @@ import pathlib
 import re
 import sys
 import subprocess
-from typing import List
+from typing import List, Optional
 from functools import lru_cache
 
 # imports - module imports
@@ -172,7 +172,7 @@ def get_current_branch(app, bench_path="."):
 	from bench.utils import get_cmd_output
 
 	repo_dir = get_repo_dir(app, bench_path=bench_path)
-	return get_cmd_output("basename $(git symbolic-ref -q HEAD)", cwd=repo_dir)
+	return get_cmd_output("git symbolic-ref -q --short HEAD", cwd=repo_dir)
 
 
 @lru_cache(maxsize=5)
@@ -230,18 +230,13 @@ def get_app_name(bench_path: str, folder_name: str) -> str:
 	app_name = None
 	apps_path = os.path.join(os.path.abspath(bench_path), "apps")
 
-	pyproject_path = os.path.join(apps_path, folder_name, "pyproject.toml")
 	config_py_path = os.path.join(apps_path, folder_name, "setup.cfg")
 	setup_py_path = os.path.join(apps_path, folder_name, "setup.py")
 
-	if os.path.exists(pyproject_path):
-		try:
-			from tomli import load
-		except ImportError:
-			from tomllib import load
-
-		with open(pyproject_path, "rb") as f:
-			app_name = load(f).get("project", {}).get("name")
+	pyproject_path = os.path.join(apps_path, folder_name, "pyproject.toml")
+	pyproject = get_pyproject(pyproject_path)
+	if pyproject:
+		app_name = pyproject.get("project", {}).get("name")
 
 	if not app_name and os.path.exists(config_py_path):
 		from setuptools.config import read_configuration
@@ -261,6 +256,19 @@ def get_app_name(bench_path: str, folder_name: str) -> str:
 	return folder_name
 
 
+def get_pyproject(pyproject_path: str) -> Optional[dict]:
+	if not os.path.exists(pyproject_path):
+		return None
+
+	try:
+		from tomli import load
+	except ImportError:
+		from tomllib import load
+
+	with open(pyproject_path, "rb") as f:
+		return load(f)
+
+
 def check_existing_dir(bench_path, repo_name):
 	cloned_path = os.path.join(bench_path, "apps", repo_name)
 	dir_already_exists = os.path.isdir(cloned_path)
@@ -270,12 +278,17 @@ def check_existing_dir(bench_path, repo_name):
 def get_current_version(app, bench_path="."):
 	current_version = None
 	repo_dir = get_repo_dir(app, bench_path=bench_path)
+	pyproject_path = os.path.join(repo_dir, "pyproject.toml")
 	config_path = os.path.join(repo_dir, "setup.cfg")
 	init_path = os.path.join(repo_dir, os.path.basename(repo_dir), "__init__.py")
 	setup_path = os.path.join(repo_dir, "setup.py")
 
 	try:
-		if os.path.exists(config_path):
+		pyproject = get_pyproject(pyproject_path)
+		if pyproject:
+			current_version = pyproject.get("project", {}).get("version")
+
+		if not current_version and os.path.exists(config_path):
 			from setuptools.config import read_configuration
 
 			config = read_configuration(config_path)
